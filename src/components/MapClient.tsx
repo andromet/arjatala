@@ -1,51 +1,45 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabase";
 
-/* ---------- marker data (Telkom University Bandung area) ---------- */
-interface MarkerData {
-  lat: number;
-  lng: number;
-  name: string;
-  status: "Belum ditangani" | "Sudah ditangani" | "Sedang diproses";
-  color: string;
+interface ReportMarker {
+  id: string;
+  report_code: string;
+  latitude: number;
+  longitude: number;
+  location_name: string;
+  title: string;
+  status: string;
 }
 
-const markers: MarkerData[] = [
-  { lat: -6.9735, lng: 107.6308, name: "Jl. Telekomunikasi", status: "Belum ditangani", color: "#dc2626" },
-  { lat: -6.9765, lng: 107.6345, name: "Jl. Sukabirus", status: "Sudah ditangani", color: "#16a34a" },
-  { lat: -6.971, lng: 107.637, name: "Jl. PGA", status: "Sedang diproses", color: "#f59e0b" },
-  { lat: -6.978, lng: 107.632, name: "Jl. Bojongsoang", status: "Sudah ditangani", color: "#16a34a" },
-  { lat: -6.975, lng: 107.639, name: "Jl. Terusan Buah Batu", status: "Belum ditangani", color: "#dc2626" },
-];
-
-function statusIcon(status: MarkerData["status"]) {
-  if (status === "Sudah ditangani") return "✅";
-  if (status === "Sedang diproses") return "🔄";
-  return "⚠️";
+function getStatusStyle(status: string) {
+  if (status === "Selesai") {
+    return { color: "#16a34a", icon: "✅", label: "Selesai dibersihkan" };
+  }
+  if (status === "Dalam Penanganan") {
+    return { color: "#7c3aed", icon: "🔄", label: "Dalam penanganan" };
+  }
+  return { color: "#dc2626", icon: "⚠️", label: "Terverifikasi (Belum ditangani)" };
 }
 
 export default function MapClient() {
   const mapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Hindari eksekusi di sisi server (SSR)
     if (typeof window === "undefined" || !mapRef.current) return;
 
     let mapInstance: any = null;
 
     const initMap = async () => {
-      // 1. Import leaflet secara dinamis
-      const L = (await import("leaflet")).default || await import("leaflet");
+      const L = (await import("leaflet")).default || (await import("leaflet"));
 
-      // 2. Bersihkan wadah peta sepenuhnya (Trik ampuh untuk Next.js)
       const container = mapRef.current;
       if (container) {
-        container.innerHTML = ""; 
+        container.innerHTML = "";
         (container as any)._leaflet_id = null;
       }
 
-      // 3. Suntikkan CSS Leaflet
       if (!document.querySelector('link[href*="leaflet"]')) {
         const link = document.createElement("link");
         link.rel = "stylesheet";
@@ -54,26 +48,38 @@ export default function MapClient() {
         document.head.appendChild(link);
       }
 
-      // 4. Inisialisasi Peta
       mapInstance = L.map(mapRef.current!, {
-        center: [-6.9748, 107.6332],
+        center: [-6.9748, 107.6332], // Tetap terpusat di Bojongsoang / Bandung
         zoom: 15,
         scrollWheelZoom: true,
         attributionControl: true,
       });
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(mapInstance);
 
-      // 5. Tambahkan Marker
-      markers.forEach((m) => {
+      // Ambil data laporan dari Supabase (selain yang masih menunggu verifikasi atau ditolak)
+      const { data: reports, error } = await supabase
+        .from("reports")
+        .select("id, report_code, latitude, longitude, location_name, title, status")
+        .in("status", ["Terverifikasi", "Dalam Penanganan", "Selesai"]);
+
+      if (error) {
+        console.error("Gagal mengambil data peta:", error.message);
+        return;
+      }
+
+      (reports as ReportMarker[])?.forEach((m) => {
+        const style = getStatusStyle(m.status);
+
         const icon = L.divIcon({
           className: "",
           html: `<div style="
             width:18px;height:18px;border-radius:50%;
-            background:${m.color};border:3px solid #fff;
+            background:${style.color};border:3px solid #fff;
             box-shadow:0 1px 4px rgba(0,0,0,.3);
           "></div>`,
           iconSize: [18, 18],
@@ -81,12 +87,13 @@ export default function MapClient() {
           popupAnchor: [0, -12],
         });
 
-        L.marker([m.lat, m.lng], { icon })
+        L.marker([m.latitude, m.longitude], { icon })
           .addTo(mapInstance)
           .bindPopup(
-            `<div style="font-family:system-ui,sans-serif;min-width:160px;">
-              <p style="margin:0 0 4px;font-weight:600;font-size:14px;color:#111;">${m.name}</p>
-              <p style="margin:0;font-size:13px;color:#555;">${statusIcon(m.status)} ${m.status}</p>
+            `<div style="font-family:system-ui,sans-serif;min-width:170px;">
+              <p style="margin:0 0 2px;font-size:11px;color:#6b7280;font-weight:600;">${m.report_code}</p>
+              <p style="margin:0 0 4px;font-weight:600;font-size:14px;color:#111;">${m.location_name}</p>
+              <p style="margin:0;font-size:12px;color:#555;">${style.icon} ${style.label}</p>
             </div>`,
             { closeButton: false, className: "arjatala-popup" }
           );
@@ -95,7 +102,6 @@ export default function MapClient() {
 
     initMap();
 
-    // 6. Cleanup saat komponen dilepas (unmount)
     return () => {
       if (mapInstance) {
         mapInstance.remove();
@@ -104,6 +110,5 @@ export default function MapClient() {
     };
   }, []);
 
-  // Tambahkan z-0 agar popup peta tidak menabrak / menutupi Navbar Anda
   return <div ref={mapRef} className="h-[420px] w-full sm:h-[480px] z-0 rounded-xl" />;
 }
