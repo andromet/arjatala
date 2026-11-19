@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/auth";
 import type { ReportItem } from "@/components/PublicMapExplorer";
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [activeTab, setActiveTab] = useState<
     "Menunggu Verifikasi" | "Terverifikasi" | "Dalam Penanganan" | "Selesai" | "Ditolak"
@@ -23,33 +27,46 @@ export default function AdminDashboardPage() {
   const [afterImageFile, setAfterImageFile] = useState<File | null>(null);
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
 
-  const fetchAllReports = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("reports")
-      .select("*")
-      .order("created_at", { ascending: false });
+  // 1. Deklarasikan fetchAllReports TERLEBIH DAHULU sebelum useEffect
+  const fetchAllReports = useCallback(
+    async (currentTab = activeTab) => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("reports")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      const typed = data as ReportItem[];
-      setReports(typed);
+      if (!error && data) {
+        const typed = data as ReportItem[];
+        setReports(typed);
 
-      // Pilih otomatis item pertama pada tab aktif jika belum ada yang dipilih
-      const inTab = typed.filter((r) => r.status === activeTab);
-      if (inTab.length > 0) {
-        setSelectedReport((prev) =>
-          prev && inTab.some((x) => x.id === prev.id) ? prev : inTab[0]
-        );
-      } else {
-        setSelectedReport(null);
+        const inTab = typed.filter((r) => r.status === currentTab);
+        if (inTab.length > 0) {
+          setSelectedReport((prev) =>
+            prev && inTab.some((x) => x.id === prev.id) ? prev : inTab[0]
+          );
+        } else {
+          setSelectedReport(null);
+        }
       }
-    }
-    setLoading(false);
-  };
+      setLoading(false);
+    },
+    [activeTab]
+  );
 
+  // 2. Jalankan proteksi role admin & ambil data
   useEffect(() => {
+    const user = getSessionUser();
+    if (!user || user.role !== "admin") {
+      router.replace("/masuk");
+      return;
+    }
+    setIsAuthorized(true);
     fetchAllReports();
-  }, []);
+  }, [router, fetchAllReports]);
+
+  // 3. Return null HARUS diletakkan setelah seluruh Hooks selesai dideklarasikan
+  if (!isAuthorized) return null;
 
   // Sinkronkan pilihan saat tab status diganti
   const handleTabChange = (
@@ -87,7 +104,7 @@ export default function AdminDashboardPage() {
         },
       ]);
       setFeedbackMsg(`Laporan ${selectedReport.report_code} berhasil diverifikasi!`);
-      await fetchAllReports();
+      await fetchAllReports(activeTab);
     }
     setActionLoading(false);
   };
@@ -124,7 +141,7 @@ export default function AdminDashboardPage() {
       setShowRejectBox(false);
       setRejectionReason("");
       setFeedbackMsg(`Laporan ${selectedReport.report_code} telah ditolak.`);
-      await fetchAllReports();
+      await fetchAllReports(activeTab);
     }
     setActionLoading(false);
   };
@@ -154,7 +171,7 @@ export default function AdminDashboardPage() {
         },
       ]);
       setFeedbackMsg(`Tim ditugaskan untuk ${selectedReport.report_code}.`);
-      await fetchAllReports();
+      await fetchAllReports(activeTab);
     }
     setActionLoading(false);
   };
@@ -218,7 +235,7 @@ export default function AdminDashboardPage() {
       setFeedbackMsg(
         `Bukti penyelesaian ${selectedReport.report_code} tersimpan! Pin peta berubah hijau.`
       );
-      await fetchAllReports();
+      await fetchAllReports(activeTab);
     } catch (err: any) {
       setFeedbackMsg(`Gagal menyelesaikan laporan: ${err.message}`);
     } finally {
@@ -226,43 +243,11 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Statistik Ringkas di Atas Dashboard
   const countByStatus = (st: string) => reports.filter((r) => r.status === st).length;
   const tabReports = reports.filter((r) => r.status === activeTab);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-900">
-      {/* Header Global */}
-      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-8">
-            <Link
-              href="/"
-              className="text-xl font-bold tracking-tight text-emerald-700"
-            >
-              Arjatala
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-              <Link href="/" className="text-gray-600 hover:text-emerald-700">
-                Beranda
-              </Link>
-              <Link href="/peta" className="text-gray-600 hover:text-emerald-700">
-                Peta Sampah
-              </Link>
-              <Link href="/admin" className="text-emerald-700 font-semibold">
-                Dashboard Admin
-              </Link>
-            </nav>
-          </div>
-          <Link
-            href="/peta"
-            className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Lihat Peta Publik →
-          </Link>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
@@ -273,7 +258,7 @@ export default function AdminDashboardPage() {
           </p>
         </div>
 
-        {/* 4 Kartu Statistik (Sesuai Mockup Dashboard Admin) */}
+        {/* 4 Kartu Statistik */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
             <p className="text-xs font-medium text-gray-500">Perlu verifikasi</p>
@@ -317,7 +302,6 @@ export default function AdminDashboardPage() {
           <div className="rounded-2xl border border-gray-200 bg-white p-6 lg:col-span-2">
             <h2 className="text-lg font-bold text-gray-900">Antrean laporan</h2>
 
-            {/* Tab Navigasi Status */}
             <div className="mt-4 flex flex-wrap gap-2 border-b border-gray-100 pb-4">
               {(
                 [
@@ -343,7 +327,6 @@ export default function AdminDashboardPage() {
               ))}
             </div>
 
-            {/* Tabel Daftar Laporan di Tab Aktif */}
             {loading ? (
               <p className="py-8 text-center text-sm text-gray-500">
                 Memuat antrean laporan...
@@ -406,7 +389,6 @@ export default function AdminDashboardPage() {
                   </p>
                 </div>
 
-                {/* Foto Bukti Warga */}
                 {selectedReport.before_image_url ? (
                   <div>
                     <img
@@ -437,7 +419,7 @@ export default function AdminDashboardPage() {
                   </p>
                 </div>
 
-                {/* AKSI 1: JIKA STATUS = MENUNGGU VERIFIKASI */}
+                {/* AKSI 1: MENUNGGU VERIFIKASI */}
                 {selectedReport.status === "Menunggu Verifikasi" && (
                   <div className="space-y-3 pt-2">
                     <p className="text-xs font-semibold text-gray-700">
@@ -497,7 +479,7 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
-                {/* AKSI 2: JIKA STATUS = TERVERIFIKASI (Tugaskan Tim) */}
+                {/* AKSI 2: TERVERIFIKASI */}
                 {selectedReport.status === "Terverifikasi" && (
                   <div className="space-y-3 border-t border-gray-100 pt-3">
                     <label className="block text-xs font-semibold text-gray-800">
@@ -520,7 +502,7 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
-                {/* AKSI 3: JIKA STATUS = DALAM PENANGANAN (Upload Foto Sesudah & Selesai) */}
+                {/* AKSI 3: DALAM PENANGANAN */}
                 {selectedReport.status === "Dalam Penanganan" && (
                   <div className="space-y-3 border-t border-gray-100 pt-3">
                     <p className="text-xs text-purple-800 font-semibold">
@@ -575,7 +557,7 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
-                {/* INFO JIKA SUDAH SELESAI */}
+                {/* INFO SUDAH SELESAI */}
                 {selectedReport.status === "Selesai" && selectedReport.after_image_url && (
                   <div className="border-t border-gray-100 pt-3">
                     <p className="mb-1 text-xs font-semibold text-emerald-700">

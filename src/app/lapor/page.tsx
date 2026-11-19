@@ -4,6 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/auth";
 
 const LocationPickerMap = dynamic(
   () => import("@/components/LocationPickerMap"),
@@ -131,27 +132,28 @@ export default function LaporPage() {
       // 2. Buat nomor laporan unik format PB-2026-XXXX
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const reportCode = `PB-2026-${randomNum}`;
-
+      const currentUser = getSessionUser();
       // 3. Simpan ke tabel 'reports'
       const { data: insertedReport, error: insertError } = await supabase
         .from("reports")
         .insert([
-          {
-            report_code: reportCode,
-            point_type: "liar",
-            title: title.trim(),
-            location_name: locationName.trim(),
-            district: district.trim(),
-            latitude,
-            longitude,
-            category,
-            estimated_volume: estimatedVolume,
-            description: description.trim(),
-            status: "Menunggu Verifikasi",
-            before_image_url: beforeImageUrl,
-            reporter_name: reporterName.trim() || "Warga",
-          },
-        ])
+            {
+              report_code: reportCode,
+              point_type: "liar",
+              title: title.trim(),
+              location_name: locationName.trim(),
+              district: district.trim(),
+              latitude,
+              longitude,
+              category,
+              estimated_volume: estimatedVolume,
+              description: description.trim(),
+              status: "Menunggu Verifikasi",
+              before_image_url: beforeImageUrl,
+              reporter_name: currentUser ? currentUser.full_name : (reporterName.trim() || "Warga"),
+              reporter_nim: currentUser ? currentUser.nim : null,
+            },
+          ])
         .select("id, report_code")
         .single();
 

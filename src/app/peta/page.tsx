@@ -168,36 +168,6 @@ function PetaContent() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-900">
-      {/* Header Global */}
-      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-8">
-            <Link
-              href="/"
-              className="text-xl font-bold tracking-tight text-emerald-700"
-            >
-              Arjatala
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-              <Link href="/" className="text-gray-600 hover:text-emerald-700">
-                Beranda
-              </Link>
-              <Link href="/peta" className="text-emerald-700 font-semibold">
-                Peta Sampah
-              </Link>
-              <Link href="/admin" className="text-gray-600 hover:text-emerald-700">
-                Dashboard Admin
-              </Link>
-            </nav>
-          </div>
-          <Link
-            href="/lapor"
-            className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-          >
-            + Laporkan titik
-          </Link>
-        </div>
-      </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         {/* Baris Judul & Pencarian / Lacak Kode Laporan */}
